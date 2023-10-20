@@ -1,0 +1,24 @@
+{
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-auto": "^2",
+    "@sveltejs/kit": "^1",
+    "autoprefixer": "^10",
+    "daisyui": "^3",
+    "postcss": "^8",
+    "svelte": "^4",
+    "tailwindcss": "^3",
+    "vite": "^4"
+  },
+  "dependencies": {
+    "p5-svelte": "^3.1.2",
+    "svelte-json-tree": "^2.2.0",
+    "svelte-vega": "^2.1.0",
+    "tone": "^14.7.77"
+  }
+}
