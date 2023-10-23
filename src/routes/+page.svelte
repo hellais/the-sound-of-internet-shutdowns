@@ -2,11 +2,64 @@
   import { onMount } from "svelte";
   import JSONTree from "svelte-json-tree";
   import P5 from "p5-svelte";
+  import * as d3 from "d3";
   import * as Tone from "tone";
 
   let iodaURL;
   let iodaData;
+  let dataRawValues = {};
+  let dataSteps = {};
+  let dataMaxValue = {};
+  let dataMinValue = {};
+  let sketch;
 
+  //onMount(async () => {});
+
+  /*
+  const pingSynth = new Tone.Synth({
+    oscillator: {
+      type: "fmsine4",
+      modulationType: "square",
+    },
+  }).toDestination();
+
+  const lowPass = new Tone.Filter({
+    frequency: 14000,
+  }).toDestination();
+
+  const closedHiHatEnvelope = new Tone.AmplitudeEnvelope({
+    attack: 0.01,
+    decay: 0.15,
+  }).toDestination();
+
+  const closedHiHat = new Tone.Noise().chain(closedHiHatEnvelope, lowPass);
+*/
+
+  const bassFilter = new Tone.Filter({
+    frequency: 13000,
+  });
+
+  /*
+  const bassSynth = new Tone.PulseOscillator("A2", 0.5)
+    .chain(bassFilter)
+    .toDestination();
+  bassSynth.start();
+  */
+
+  const bassSynth = new Tone.MonoSynth({
+    oscillator: {
+      type: "square",
+    },
+    envelope: {
+      attack: 0.1,
+    },
+  }).toDestination();
+  //bassSynth.start();
+  //synth.triggerAttackRelease("C4", "8n");
+
+  //closedHiHat.start();
+
+  let currentYValue = 0;
   const loadData = async () => {
     const p = new URL(iodaURL);
     console.log(p);
@@ -15,206 +68,168 @@
       `https://api.ioda.inetintel.cc.gatech.edu/v2/signals/raw${p.pathname}${p.search}`
     );
     iodaData = await response.json();
-  };
+    iodaData.data[0].forEach((d) => {
+      dataRawValues[d.datasource] = d.values;
+      dataSteps[d.datasource] = d.step;
+      dataMaxValue[d.datasource] = Math.max(...d.values);
+      dataMinValue[d.datasource] = Math.min(...d.values);
+    });
 
-  onMount(async () => {});
-  const sketch = (p5) => {
-    p5.setup = () => {
-      // create a canvas width and height of the screen
-      // document.querySelector('canvas')
-      p5.createCanvas(800, 300);
-      // no fill
-      p5.fill(255);
-      p5.strokeWeight(1);
-      p5.rectMode(p5.CENTER);
-    };
+    let noteScaleRange = [];
+    for (let i = 5; i >= 3; i--) {
+      noteScaleRange.push(`C${i}`);
+      noteScaleRange.push(`D${i}`);
+      noteScaleRange.push(`E${i}`);
+      noteScaleRange.push(`F${i}`);
+      noteScaleRange.push(`G${i}`);
+      noteScaleRange.push(`A${i}`);
+      noteScaleRange.push(`B${i}`);
+    }
 
-    let phase = 0;
+    //gtr-norm,merit-nt,bgp,ping-slash24
+    const timeSec = 0.02;
+    const pingDurationScale = d3.scaleLinear(
+      [dataMinValue["ping-slash24"], dataMaxValue["ping-slash24"]],
+      [0, 2]
+    );
+    const pingFilterScale = d3.scalePow(
+      [dataMinValue["ping-slash24"], dataMaxValue["ping-slash24"]],
+      [0, 14000]
+    );
 
-    p5.draw = () => {
-      p5.background(255);
-      p5.stroke(0);
-      // drawing the kick wave at the bottom
-      // it is composed of a simple sine wave that
-      // changes in height with the kick envelope
-      for (let i = 0; i < p5.width; i++) {
-        // scaling kickEnvelope value by 200
-        // since default is 0-1
-        const kickValue = kickEnvelope.value * 200;
-        // multiplying this value to scale the sine wave
-        // depending on x position
-        const yDot = Math.sin(i / 60 + phase) * kickValue;
-        p5.point(i, p5.height - 150 + yDot);
-      }
-      // increasing phase means that the kick wave will
-      // not be standing and looks more dynamic
-      phase += 1;
-      // updating circle and square positions with
-      // bass envelop visualizer
-      const bassRadius = p5.height * bassEnvelope.value;
-      p5.stroke("red");
-      const bassX = p5.noise(p5.millis() / 1000) * p5.width;
-      const bassY = p5.noise(phase / 100) * p5.height;
-      p5.ellipse(bassX, bassY, bassRadius, bassRadius);
-
-      // beep envelope viz
-      const beepX = p5.noise(p5.millis() / 500) * p5.width;
-      const beepY = p5.noise(phase / 50) * p5.height;
-      const beepSize = p5.height * bleepEnvelope.value;
-      p5.stroke("green");
-      p5.rect(beepX, beepY, beepSize, beepSize);
-    };
-  };
-
-  // filtering the hi-hats a bit
-  // to make them sound nicer
-  const lowPass = new Tone.Filter({
-    frequency: 14000,
-  }).toDestination();
-
-  // we can make our own hi hats with
-  // the noise synth and a sharp filter envelope
-  const openHiHat = new Tone.NoiseSynth({
-    volume: -10,
-    envelope: {
+    //const bgpValNoteScale = d3.scaleThreshold([0, 1], ["red", "white", "blue"]);
+    const bgpYScale = d3.scaleLinear(
+      [dataMinValue["bgp"], dataMaxValue["bgp"]],
+      [0, 300]
+    );
+    const bgpEnvelope = new Tone.AmplitudeEnvelope({
       attack: 0.01,
-      decay: 0.3,
-    },
-  }).connect(lowPass);
+      decay: 0.4,
+      sustain: 0,
+    }).toDestination();
+    const bgpNoteScale = d3.scaleQuantize(
+      [dataMinValue["bgp"], dataMaxValue["bgp"]],
+      noteScaleRange
+    );
 
-  const openHiHatPart = new Tone.Part(
-    (time) => {
-      openHiHat.triggerAttack(time);
-    },
-    [{ "8n": 2 }, { "8n": 6 }]
-  ).start(0);
+    const vizScale = d3.scalePow([0, 14000], [0, 1]);
 
-  const closedHiHat = new Tone.NoiseSynth({
-    volume: -10,
-    envelope: {
-      attack: 0.01,
-      decay: 0.15,
-    },
-  }).connect(lowPass);
+    let pingPart = dataRawValues["ping-slash24"].map((v, idx) => {
+      let duration = pingDurationScale(v);
+      let filter = pingFilterScale(v);
 
-  const closedHatPart = new Tone.Part(
-    (time) => {
-      closedHiHat.triggerAttack(time);
-    },
-    [
-      0,
-      { "16n": 1 },
-      { "8n": 1 },
-      { "8n": 3 },
-      { "8n": 4 },
-      { "8n": 5 },
-      { "8n": 7 },
-      { "8n": 8 },
-    ]
-  ).start(0);
+      return {
+        duration,
+        filter,
+        time: timeSec * idx,
+        raw: v,
+      };
+    });
+    let bgpPart = [];
+    const sliceSize = 10;
+    for (let i = 0; i < dataRawValues["bgp"].length / sliceSize; i++) {
+      const datumRange = dataRawValues["bgp"].slice(
+        sliceSize * i,
+        sliceSize * i + sliceSize
+      );
+      const v = d3.max(datumRange);
+      const maxIdx = d3.maxIndex(datumRange);
+      let frequency = bgpNoteScale(v);
+      bgpPart.push({
+        frequency,
+        idx: maxIdx + sliceSize * i,
+        time: timeSec * i,
+        raw: v,
+      });
+    }
 
-  // BASS
-  const bassEnvelope = new Tone.AmplitudeEnvelope({
-    attack: 0.01,
-    decay: 0.2,
-    sustain: 0,
-  }).toDestination();
+    let bassSynthPart = new Tone.Part((time, value) => {
+      currentYValue = value.raw;
+      /*
+      bassSynth.set({
+        frequency: note,
+      });
+      */
+      console.log(value.frequency);
+      bassSynth.triggerAttackRelease(value.frequency, "4n");
+      //bgpEnvelope.triggerAttack(time);
+    }, bgpPart).start(0);
 
-  const bassFilter = new Tone.Filter({
-    frequency: 600,
-    Q: 8,
-  });
+    /*
+    const closedHatPart = new Tone.Part((time, value) => {
+      lowPass.set({
+        frequency: value.filter,
+      });
+      closedHiHatEnvelope.triggerAttackRelease(value.duration, time);
+    }, pingPart).start(0);
+    */
 
-  const bass = new Tone.PulseOscillator("A2", 0.4).chain(
-    bassFilter,
-    bassEnvelope
-  );
-  bass.start();
+    let points = Array(800);
+    let currentIdx = 0;
+    sketch = (p5) => {
+      p5.setup = () => {
+        // create a canvas width and height of the screen
+        // document.querySelector('canvas')
+        p5.createCanvas(800, 300);
+        // no fill
+        p5.fill(255);
+        p5.strokeWeight(1);
+        p5.rectMode(p5.CENTER);
+      };
 
-  const bassPart = new Tone.Part(
-    (time, note) => {
-      bass.frequency.setValueAtTime(note, time);
-      bassEnvelope.triggerAttack(time);
-    },
-    [
-      ["0:0", "A1"],
-      ["0:2", "G1"],
-      ["0:2:2", "C2"],
-      ["0:3:2", "A1"],
-    ]
-  ).start(0);
+      p5.draw = () => {
+        p5.background(255);
+        p5.stroke(0);
 
-  // BLEEP
-  const bleepEnvelope = new Tone.AmplitudeEnvelope({
-    attack: 0.01,
-    decay: 0.4,
-    sustain: 0,
-  }).toDestination();
-
-  const bleep = new Tone.Oscillator("A4").connect(bleepEnvelope);
-  bleep.start();
-
-  const bleepLoop = new Tone.Loop((time) => {
-    bleepEnvelope.triggerAttack(time);
-  }, "2n").start(0);
-
-  // KICK
-  const kickEnvelope = new Tone.AmplitudeEnvelope({
-    attack: 0.01,
-    decay: 0.2,
-    sustain: 0,
-  }).toDestination();
-
-  const kick = new Tone.Oscillator("A2").connect(kickEnvelope).start();
-
-  const kickSnapEnv = new Tone.FrequencyEnvelope({
-    attack: 0.005,
-    decay: 0.01,
-    sustain: 0,
-    baseFrequency: "A2",
-    octaves: 2.7,
-  }).connect(kick.frequency);
-
-  const kickPart = new Tone.Part(
-    (time) => {
-      kickEnvelope.triggerAttack(time);
-      kickSnapEnv.triggerAttack(time);
-    },
-    ["0", "0:0:3", "0:2:0", "0:3:1"]
-  ).start(0);
-
-  // TRANSPORT
-  Tone.Transport.loopStart = 0;
-  Tone.Transport.loopEnd = "1:0";
-  Tone.Transport.loop = true;
+        //p5.map(x, 0,100, 150,350)
+        // console.log(closedHiHatEnvelope.value);
+        //const y = p5.height * bassSynth.frequency.value;
+        const y = bgpYScale(currentYValue);
+        points[currentIdx] = [currentIdx, y];
+        points.forEach((p) => {
+          p5.stroke("green");
+          p5.strokeWeight(3);
+          p5.point(p[0], p[1]);
+        });
+        currentIdx = (currentIdx + 1) % 800;
+        //p5.rect(beepX, beepY, beepSize, beepSize);
+      };
+    };
+  };
 
   let stopped = true;
   const startPlay = () => {
     if (stopped) {
       Tone.Transport.start();
+      Tone.Destination.mute = false;
       stopped = false;
     } else {
       Tone.Transport.stop();
+      Tone.Destination.mute = true;
       stopped = true;
     }
   };
 </script>
 
-<main>
-  <input
-    type="text"
-    placeholder="enter url of ioda chart"
-    class="input w-full max-w-xs"
-    bind:value={iodaURL}
-  />
-  <button class="btn" on:click={loadData}>Load</button>
-
+<div class="container mx-auto pt-10">
+  <h2 class="text-5xl">The Sound of Internet Shutdowns</h2>
+  <div class="pt-10">
+    <input
+      type="text"
+      placeholder="enter url of ioda chart"
+      class="input input-bordered input-primary w-full max-w-2xl"
+      bind:value={iodaURL}
+    />
+    <button class="btn btn-primary" on:click={loadData}>Load</button>
+  </div>
   {#if iodaData}
     <JSONTree value={iodaData} />
+    {Object.keys(dataSteps)}
   {:else}
     <p>Loading...</p>
   {/if}
-
-  <P5 {sketch} />
+  {#if sketch}
+    <P5 {sketch} />
+  {/if}
   <button class="btn" on:click={startPlay}>Start/Stop</button>
-</main>
+</div>

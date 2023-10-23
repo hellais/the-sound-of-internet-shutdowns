@@ -16,6 +16,8 @@
     "vite": "^4"
   },
   "dependencies": {
+    "@tailwindcss/typography": "^0.5.10",
+    "d3": "^7.8.5",
     "p5-svelte": "^3.1.2",
     "svelte-json-tree": "^2.2.0",
     "svelte-vega": "^2.1.0",
