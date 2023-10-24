@@ -87,6 +87,7 @@
   let currentBGPValue = 0;
   let currentPingValue = 0;
   const loadData = async () => {
+    await Tone.start();
     const p = new URL(iodaURL);
     console.log(p);
 
@@ -190,16 +191,12 @@
 
     const closedHatPart = new Tone.Part((time, value) => {
       currentPingValue = value.raw;
-      /*
-      lowPass.set({
-        frequency: value.filter,
-      });
-      */
+      //lowPass.set({frequency: value.filter,});
       feedbackDelay.set({
         feedback: pingDelayScale(value.raw),
         wet: pingDelayScale(value.raw),
       });
-      closedHiHat.triggerAttackRelease(value.duration, time);
+      closedHiHat.triggerAttackRelease(value.duration);
     }, pingPart).start(0);
 
     let currentIdx = 0;
@@ -245,9 +242,11 @@
       stopped = false;
     } else {
       Tone.Transport.stop();
+      Tone.Transport.clear();
       Tone.Destination.mute = true;
       stopped = true;
     }
+    Tone.Transport.clear();
   };
 </script>
 
