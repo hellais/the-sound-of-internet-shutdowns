@@ -22,44 +22,70 @@
       modulationType: "square",
     },
   }).toDestination();
+*/
 
+  /*
   const lowPass = new Tone.Filter({
-    frequency: 14000,
+    frequency: 12000,
   }).toDestination();
+*/
 
   const closedHiHatEnvelope = new Tone.AmplitudeEnvelope({
     attack: 0.01,
-    decay: 0.15,
+    decay: 0.3,
   }).toDestination();
 
-  const closedHiHat = new Tone.Noise().chain(closedHiHatEnvelope, lowPass);
-*/
+  const closedHiHat = new Tone.NoiseSynth().toDestination();
+  const feedbackDelay = new Tone.PingPongDelay({
+    delayTime: "8n",
+    feedback: 0.6,
+    wet: 0.5,
+  }).toDestination();
+  closedHiHat.connect(feedbackDelay);
 
+  /*
   const bassFilter = new Tone.Filter({
     frequency: 13000,
   });
 
-  /*
   const bassSynth = new Tone.PulseOscillator("A2", 0.5)
     .chain(bassFilter)
     .toDestination();
   bassSynth.start();
   */
 
+  const bassSynth = new Tone.FMSynth({
+    modulationIndex: 12.22,
+    envelope: {
+      attack: 0.01,
+      decay: 0.2,
+    },
+    modulation: {
+      type: "square",
+    },
+    modulationEnvelope: {
+      attack: 0.2,
+      decay: 0.01,
+    },
+  }).toDestination();
+  /*
   const bassSynth = new Tone.MonoSynth({
     oscillator: {
       type: "square",
     },
     envelope: {
-      attack: 0.1,
+      attack: 0.2,
     },
   }).toDestination();
+  */
   //bassSynth.start();
   //synth.triggerAttackRelease("C4", "8n");
 
   //closedHiHat.start();
 
-  let currentYValue = 0;
+  let drawingStopped = false;
+  let currentBGPValue = 0;
+  let currentPingValue = 0;
   const loadData = async () => {
     const p = new URL(iodaURL);
     console.log(p);
@@ -87,7 +113,7 @@
     }
 
     //gtr-norm,merit-nt,bgp,ping-slash24
-    const timeSec = 0.02;
+    const timeSec = 0.5;
     const pingDurationScale = d3.scaleLinear(
       [dataMinValue["ping-slash24"], dataMaxValue["ping-slash24"]],
       [0, 2]
@@ -96,17 +122,21 @@
       [dataMinValue["ping-slash24"], dataMaxValue["ping-slash24"]],
       [0, 14000]
     );
+    const pingDelayScale = d3.scalePow(
+      [dataMinValue["ping-slash24"], dataMaxValue["ping-slash24"]],
+      [0, 1]
+    );
+    const pingYScale = d3.scaleLinear(
+      [dataMinValue["ping-slash24"], dataMaxValue["ping-slash24"]],
+      [0, 300]
+    );
 
     //const bgpValNoteScale = d3.scaleThreshold([0, 1], ["red", "white", "blue"]);
     const bgpYScale = d3.scaleLinear(
       [dataMinValue["bgp"], dataMaxValue["bgp"]],
       [0, 300]
     );
-    const bgpEnvelope = new Tone.AmplitudeEnvelope({
-      attack: 0.01,
-      decay: 0.4,
-      sustain: 0,
-    }).toDestination();
+
     const bgpNoteScale = d3.scaleQuantize(
       [dataMinValue["bgp"], dataMaxValue["bgp"]],
       noteScaleRange
@@ -114,57 +144,64 @@
 
     const vizScale = d3.scalePow([0, 14000], [0, 1]);
 
-    let pingPart = dataRawValues["ping-slash24"].map((v, idx) => {
-      let duration = pingDurationScale(v);
-      let filter = pingFilterScale(v);
-
-      return {
-        duration,
-        filter,
-        time: timeSec * idx,
-        raw: v,
-      };
-    });
-    let bgpPart = [];
-    const sliceSize = 10;
-    for (let i = 0; i < dataRawValues["bgp"].length / sliceSize; i++) {
-      const datumRange = dataRawValues["bgp"].slice(
-        sliceSize * i,
-        sliceSize * i + sliceSize
-      );
-      const v = d3.max(datumRange);
-      const maxIdx = d3.maxIndex(datumRange);
-      let frequency = bgpNoteScale(v);
-      bgpPart.push({
-        frequency,
-        idx: maxIdx + sliceSize * i,
-        time: timeSec * i,
-        raw: v,
-      });
-    }
+    const resampleDataset = (d, sliceSize, genFunc) => {
+      let resampled = [];
+      for (let i = 0; i < d.length / sliceSize; i++) {
+        const datumRange = d.slice(sliceSize * i, sliceSize * i + sliceSize);
+        const v = d3.max(datumRange);
+        const maxIdx = d3.maxIndex(datumRange);
+        resampled.push(genFunc(v, maxIdx, sliceSize, i));
+      }
+      return resampled;
+    };
+    const pingPart = resampleDataset(
+      dataRawValues["ping-slash24"],
+      10,
+      (v, maxIdx, sliceSize, i) => {
+        let duration = pingDurationScale(v);
+        let filter = pingFilterScale(v);
+        return {
+          duration,
+          filter,
+          idx: maxIdx + sliceSize * i,
+          time: timeSec * i,
+          raw: v,
+        };
+      }
+    );
+    const bgpPart = resampleDataset(
+      dataRawValues["bgp"],
+      20,
+      (v, maxIdx, sliceSize, i) => {
+        let frequency = bgpNoteScale(v);
+        return {
+          frequency,
+          idx: maxIdx + sliceSize * i,
+          time: timeSec * i,
+          raw: v,
+        };
+      }
+    );
 
     let bassSynthPart = new Tone.Part((time, value) => {
-      currentYValue = value.raw;
-      /*
-      bassSynth.set({
-        frequency: note,
-      });
-      */
-      console.log(value.frequency);
+      currentBGPValue = value.raw;
       bassSynth.triggerAttackRelease(value.frequency, "4n");
-      //bgpEnvelope.triggerAttack(time);
     }, bgpPart).start(0);
 
-    /*
     const closedHatPart = new Tone.Part((time, value) => {
+      currentPingValue = value.raw;
+      /*
       lowPass.set({
         frequency: value.filter,
       });
-      closedHiHatEnvelope.triggerAttackRelease(value.duration, time);
+      */
+      feedbackDelay.set({
+        feedback: pingDelayScale(value.raw),
+        wet: pingDelayScale(value.raw),
+      });
+      closedHiHat.triggerAttackRelease(value.duration, time);
     }, pingPart).start(0);
-    */
 
-    let points = Array(800);
     let currentIdx = 0;
     sketch = (p5) => {
       p5.setup = () => {
@@ -174,25 +211,28 @@
         // no fill
         p5.fill(255);
         p5.strokeWeight(1);
+        //p5.background(255);
         p5.rectMode(p5.CENTER);
       };
 
       p5.draw = () => {
-        p5.background(255);
-        p5.stroke(0);
+        if (drawingStopped === false) {
+          //p5.background(255);
+          p5.stroke(0);
 
-        //p5.map(x, 0,100, 150,350)
-        // console.log(closedHiHatEnvelope.value);
-        //const y = p5.height * bassSynth.frequency.value;
-        const y = bgpYScale(currentYValue);
-        points[currentIdx] = [currentIdx, y];
-        points.forEach((p) => {
-          p5.stroke("green");
+          //p5.map(x, 0,100, 150,350)
+          // console.log(closedHiHatEnvelope.value);
+          //const y = p5.height * bassSynth.frequency.value;
+          p5.stroke("#33A02C");
           p5.strokeWeight(3);
-          p5.point(p[0], p[1]);
-        });
-        currentIdx = (currentIdx + 1) % 800;
-        //p5.rect(beepX, beepY, beepSize, beepSize);
+          p5.point(currentIdx, bgpYScale(currentBGPValue));
+
+          p5.stroke("#ED9B40");
+          p5.strokeWeight(3);
+          p5.point(currentIdx, pingYScale(currentPingValue));
+          currentIdx = (currentIdx + 1) % 800;
+          //p5.rect(beepX, beepY, beepSize, beepSize);
+        }
       };
     };
   };
@@ -221,15 +261,14 @@
       bind:value={iodaURL}
     />
     <button class="btn btn-primary" on:click={loadData}>Load</button>
+    <button class="btn" on:click={startPlay}>Start/Stop</button>
   </div>
   {#if iodaData}
     <JSONTree value={iodaData} />
-    {Object.keys(dataSteps)}
-  {:else}
-    <p>Loading...</p>
   {/if}
-  {#if sketch}
-    <P5 {sketch} />
-  {/if}
-  <button class="btn" on:click={startPlay}>Start/Stop</button>
+  <div class="mt-10">
+    {#if sketch}
+      <P5 {sketch} />
+    {/if}
+  </div>
 </div>
