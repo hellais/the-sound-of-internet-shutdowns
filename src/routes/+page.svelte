@@ -30,19 +30,6 @@
   }).toDestination();
 */
 
-  const closedHiHatEnvelope = new Tone.AmplitudeEnvelope({
-    attack: 0.01,
-    decay: 0.3,
-  }).toDestination();
-
-  const closedHiHat = new Tone.NoiseSynth().toDestination();
-  const feedbackDelay = new Tone.PingPongDelay({
-    delayTime: "8n",
-    feedback: 0.6,
-    wet: 0.5,
-  }).toDestination();
-  closedHiHat.connect(feedbackDelay);
-
   /*
   const bassFilter = new Tone.Filter({
     frequency: 13000,
@@ -54,20 +41,6 @@
   bassSynth.start();
   */
 
-  const bassSynth = new Tone.FMSynth({
-    modulationIndex: 12.22,
-    envelope: {
-      attack: 0.01,
-      decay: 0.2,
-    },
-    modulation: {
-      type: "square",
-    },
-    modulationEnvelope: {
-      attack: 0.2,
-      decay: 0.01,
-    },
-  }).toDestination();
   /*
   const bassSynth = new Tone.MonoSynth({
     oscillator: {
@@ -87,6 +60,34 @@
   let currentBGPValue = 0;
   let currentPingValue = 0;
   const loadData = async () => {
+    const bassSynth = new Tone.FMSynth({
+      modulationIndex: 12.22,
+      envelope: {
+        attack: 0.01,
+        decay: 0.2,
+      },
+      modulation: {
+        type: "square",
+      },
+      modulationEnvelope: {
+        attack: 0.2,
+        decay: 0.01,
+      },
+    }).toDestination();
+
+    const closedHiHatEnvelope = new Tone.AmplitudeEnvelope({
+      attack: 0.01,
+      decay: 0.3,
+    }).toDestination();
+
+    const closedHiHat = new Tone.NoiseSynth().toDestination();
+    const feedbackDelay = new Tone.PingPongDelay({
+      delayTime: "8n",
+      feedback: 0.6,
+      wet: 0.5,
+    }).toDestination();
+    closedHiHat.connect(feedbackDelay);
+
     await Tone.start();
     const p = new URL(iodaURL);
     console.log(p);
